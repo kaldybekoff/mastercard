@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s *)",
+      "Bash(curl --silent *)",
+      "Bash(wc -l *)",
+      "Bash(tail -* *)"
+    ]
+  }
+}

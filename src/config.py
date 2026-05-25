@@ -57,6 +57,14 @@ B2B_MCC_CODES = {
     7389,  # Business services
     8049,  # Offices & clinics (может быть бизнес)
     4215,  # Courier services
+    # Кандидаты, найденные по EDA (топ-20 MCC бар-чарт, §3.3 в 01_eda.ipynb):
+    # эти коды у business доминируют, у consumer почти отсутствуют.
+    5968,  # Direct marketing / subscription services (Zoom, Shopify, Slack)
+    4816,  # Computer network / hosting services (Cloudflare, DigitalOcean, GoDaddy, Hetzner)
+    7399,  # Business services NEC
+    8931,  # Accounting / auditing / bookkeeping
+    7379,  # Computer services / repair
+    5046,  # Commercial equipment NEC
 }
 
 # Consumer MCC — потребительский сигнал
@@ -95,8 +103,8 @@ NIGHT_END = 6
 MORNING_START = 6
 MORNING_END = 9
 
-BUSINESS_DAYS = {0, 1, 2, 3, 4}  # Пн-Пт (0=Monday в Python)
-WEEKEND_DAYS = {5, 6}             # Сб-Вс
+BUSINESS_DAYS = {1, 2, 3, 4, 5}  # Пн-Пт (Polars dt.weekday(): 1=Mon, 7=Sun)
+WEEKEND_DAYS = {6, 7}             # Сб-Вс
 
 # ─── Порог скоринга (threshold) ───────────────────────────────────────────────
 # Управляется слайдером в дашборде. Здесь — дефолт для ноутбука.
