@@ -11,7 +11,7 @@ _B2B = [str(c) for c in B2B_MCC_CODES]
 def compute_geo_channel_features(df: pl.DataFrame) -> pl.DataFrame:
     df = df.with_columns([
         pl.col("mcc").is_in(_B2B).alias("_is_b2b"),
-        (pl.col("country") != "KZ").alias("_is_foreign"),
+        (pl.col("country") != "Kazakhstan").alias("_is_foreign"),
         (pl.col("channel") == "online").alias("_is_online"),
         (pl.col("channel") == "offline").alias("_is_offline"),
     ])
@@ -25,7 +25,7 @@ def compute_geo_channel_features(df: pl.DataFrame) -> pl.DataFrame:
         pl.col("country").n_unique().alias("n_unique_countries"),
         pl.col("_is_foreign").sum().alias("_n_foreign"),
         (pl.col("_is_foreign") & pl.col("_is_b2b")).sum().alias("_n_foreign_b2b"),
-        (pl.col("country") == "KZ").sum().alias("_n_kz"),
+        (pl.col("country") == "Kazakhstan").sum().alias("_n_kz"),
     ])
 
     return agg.with_columns([

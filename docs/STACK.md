@@ -4,15 +4,15 @@
 
 | Инструмент | Версия | Роль |
 |-----------|--------|------|
-| Python | 3.11 | Основной язык |
-| Anaconda | latest | Управление средой |
+| Python | 3.13 | Основной язык |
+| venv | стандартный | Управление средой (`.venv` в корне репо) |
 | VSCode | latest | IDE (Jupyter extension) |
-| Jupyter Notebook | — | Формат финального решения (требование хакатона) |
+| Jupyter Notebook | — | Формат финального решения (требование Q1/Q7 организаторов) |
 
-**Запуск среды:**
+**Запуск среды (Windows):**
 ```bash
-conda create -n mdq python=3.11
-conda activate mdq
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
@@ -22,19 +22,20 @@ pip install -r requirements.txt
 
 ### Data Processing
 
-| Библиотека | Версия | Зачем |
+| Библиотека | Минимальная версия | Зачем |
 |-----------|--------|-------|
-| **Polars** | ≥1.12 | Основная: агрегации на 13M строк. В 5-10x быстрее Pandas |
-| **Pandas** | ≥2.2 | Только для передачи в sklearn/LightGBM |
+| **Polars** | ≥1.12 | Основная: агрегации на 13M строк (5-10× быстрее Pandas) |
+| **Pandas** | ≥2.2 | Только для передачи в sklearn / LightGBM / SHAP |
 | **PyArrow** | ≥18.0 | Backend для чтения parquet |
-| **NumPy** | <2.0 | Векторные операции |
+| **NumPy** | ≥1.26 | Векторные операции |
+| **SciPy** | ≥1.14 | `rankdata`, `spearmanr` для Anomaly Boost |
 
 **Правило команды:** весь feature engineering — на Polars. В Pandas конвертируем только перед `model.fit()`.
 
 ```python
 # Правильно
-df = pl.scan_parquet("data/raw/business_cards_MDQ.parquet")
-features = df.group_by("card_number").agg([...]).collect(streaming=True)
+df = pl.read_parquet("data/raw/business_cards_MDQ.parquet")
+features = df.group_by("card_number").agg([...])
 
 # Передача в модель
 X = features.to_pandas()
@@ -44,10 +45,9 @@ X = features.to_pandas()
 
 | Библиотека | Роль |
 |-----------|------|
-| **LightGBM** | Основная модель (PU-bagging classifier) |
-| **CatBoost** | Challenger-модель для сравнения |
-| **scikit-learn** | LogReg baseline, KMeans, Isolation Forest, метрики |
-| **Optuna** | Гиперпараметр-тюнинг (Bayesian, 100+ trials) |
+| **LightGBM** | Основная модель (PU-Bagging classifier, 10 итераций) |
+| **scikit-learn** | LogReg baseline, KMeans, IsolationForest (anomaly boost), StandardScaler, PCA, метрики |
+| **joblib** | Сохранение моделей в `.pkl` |
 
 ### Explainability
 
@@ -59,69 +59,18 @@ X = features.to_pandas()
 
 | Библиотека | Зачем |
 |-----------|-------|
-| **scikit-learn** | confusion_matrix, PR-AUC, ROC-AUC, F1, classification_report |
-| **Matplotlib** | Базовые графики |
-| **Seaborn** | Heatmaps (confusion matrix), distributions |
-| **Plotly** | Интерактивные графики в Streamlit |
+| **scikit-learn** | confusion_matrix, ROC-AUC, PR-AUC, F1, Precision, Recall |
+| **Matplotlib** | Все графики проекта |
+| **tabulate** | Markdown-таблицы в отчётах |
 
-### Dashboard
-
-| Библиотека | Зачем |
-|-----------|-------|
-| **Streamlit** | Основной инструмент для дашборда |
-| **Plotly** | Интерактивные чарты внутри Streamlit |
-
-**Почему Streamlit, не Power BI:**
-- Устанавливается за 1 команду, нет лицензии
-- Python-native — весь ML-код доступен прямо в приложении
-- Можно интегрировать SHAP, ROI-калькулятор, threshold-слайдер за часы
-- Показывается в браузере, не нужно ничего открывать отдельно
-
-### Сохранение моделей
+### Сохранение
 
 | Формат | Когда |
 |--------|-------|
 | `.pkl` (joblib) | LightGBM, sklearn-объекты |
-| `.cbm` | CatBoost native формат |
-| `.parquet` | Feature matrix (processed data) |
-
----
-
-## requirements.txt
-
-```
-# Data processing
-polars>=1.12.0
-pandas>=2.2.0
-pyarrow>=18.0.0
-numpy>=1.26.0,<2.0.0
-
-# Machine learning
-scikit-learn>=1.5.0
-lightgbm>=4.5.0
-catboost>=1.2.7
-optuna>=4.0.0
-
-# Explainability
-shap>=0.46.0
-
-# Visualization
-matplotlib>=3.9.0
-seaborn>=0.13.0
-plotly>=5.24.0
-
-# Dashboard
-streamlit>=1.40.0
-
-# Notebook
-jupyterlab>=4.3.0
-ipykernel>=6.29.0
-
-# Utils
-tqdm>=4.66.0
-pyyaml>=6.0.0
-joblib>=1.4.0
-```
+| `.parquet` | Feature matrix + scored consumer |
+| `.csv` | Submission, диагностика, ablation |
+| `.png` | Визуализации (PCA, SHAP, confusion matrix, segment radars) |
 
 ---
 
@@ -130,10 +79,11 @@ joblib>=1.4.0
 | Инструмент | Почему нет |
 |-----------|-----------|
 | XGBoost | Дублирует LightGBM, хуже с категориалами |
-| TensorFlow / PyTorch | Табличная задача, DL не даст выигрыша за 7 дней |
-| Power BI / Tableau | Лицензия, внешняя экосистема, сложно деплоить |
-| Plotly Dash | Overkill по сложности vs Streamlit |
-| PySpark | Нет кластера, данные помещаются в RAM |
+| CatBoost | Заявляли как challenger, но 5-fold CV LightGBM = 1.0000 — challenger не нужен |
+| TensorFlow / PyTorch | Табличная задача, DL не даёт выигрыша |
+| Streamlit / Dash | Дашборд не сдаётся (требование Q1 — один Jupyter файл). Threshold не нужен в submission |
+| Optuna | CV ROC-AUC уже = 1.0, тюнить нечего |
+| PySpark | Данные помещаются в RAM (13M строк) |
 
 ---
 
@@ -142,28 +92,43 @@ joblib>=1.4.0
 ```
 src/
 ├── __init__.py
-├── config.py              # Пути, константы, списки B2B MCC кодов
-├── features/
-│   ├── __init__.py
-│   ├── transactional.py   # Группы A, B, H — объём, diversity, velocity
-│   ├── mcc_based.py       # Группа C — MCC классификация и фичи
-│   ├── temporal.py        # Группа D — временные паттерны
-│   ├── geo_channel.py     # Группы F, G — канал, география
-│   ├── recurring.py       # Группа E — регулярность
-│   ├── graph_features.py  # Группа J — merchant graph (бонус)
-│   └── build_features.py  # Главная функция: build_feature_matrix()
+├── config.py                — пути, MCC-коды, ROI assumptions, RANDOM_STATE
+├── features/                — feature engineering по группам
+│   ├── transactional.py     — Group A/B/H/I: объём, diversity, velocity, card metadata
+│   ├── mcc_based.py         — Group C: B2B / Consumer / Mixed / Rental MCC features
+│   ├── temporal.py          — Group D: business_hours, weekday, evening, entropy
+│   ├── recurring.py         — Group E: recurring patterns
+│   ├── geo_channel.py       — Group F/G: online/offline, foreign tx (FIXED: country="Kazakhstan", не "KZ")
+│   ├── graph_features.py    — Group J: bipartite merchant overlap + cosine similarity
+│   └── build_features.py    — главная функция: build_feature_matrix()
 ├── models/
-│   ├── __init__.py
-│   ├── baseline.py        # Logistic Regression
-│   ├── pu_bagging.py      # PU-bagging с LightGBM
-│   ├── catboost_model.py  # CatBoost challenger
-│   └── train.py           # Единый интерфейс train/predict/save
+│   ├── baseline.py          — Logistic Regression
+│   ├── pu_bagging.py        — PU-Bagging с LightGBM (главная модель)
+│   └── train.py             — prepare_splits() + save/load helpers
 ├── evaluation/
-│   ├── __init__.py
-│   ├── metrics.py         # confusion_matrix, PR-AUC, ROC-AUC, F1, Precision@K
-│   ├── plots.py           # Стандартные графики для notebook и презентации
-│   └── injection_test.py  # Synthetic Injection Test
+│   ├── cv.py                — run_5fold_cv() + summarize_cv()
+│   ├── diagnostics.py       — score distribution, top-N inspection, confusion matrix
+│   ├── shap_analysis.py     — TreeExplainer wrapper + global/local plots
+│   ├── metrics.py           — utility (legacy)
+│   └── plots.py             — utility plots (legacy)
 └── segmentation/
-    ├── __init__.py
-    └── cluster.py         # KMeans + профилирование сегментов
+    └── cluster.py           — KMeans + segment profiling
 ```
+
+---
+
+## Структура `scripts/`
+
+Оркестраторы, запускающие компоненты из `src/`. Все используют `.venv\Scripts\python.exe`.
+
+| Скрипт | Назначение |
+|--------|------------|
+| `retrain_after_fix.py` | Полный pipeline: feature build → split → train baseline + PU → score 80K |
+| `phase2_validation.py` | 5-fold CV + Confusion Matrix + Score Distribution + Top-50 |
+| `phase2f_shap.py` | SHAP global + 3 local (high/mid/low score) |
+| `phase1_5_anomaly_boost.py` | IsolationForest + combined rank score |
+| `phase6a_archetypes.py` | 3 архетипа hidden entrepreneurs с реальными мерчантами |
+| `phase6b_pca_viz.py` | 2D PCA визуализация |
+| `phase6c_segments_radar.py` | KMeans k=5 + radar charts |
+| `phase6d_ablation.py` | Ablation test (7 экспериментов с разными feature subsets) |
+| `build_final_notebook.py` | Генератор `notebooks/FINAL.ipynb` через nbformat |

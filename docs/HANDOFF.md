@@ -1,109 +1,153 @@
 # Handoff — контекст для нового чата
 
-Прочитай CLAUDE.md, docs/CASE.md, docs/FEATURES.md и src/config.py.
+Прочитай `CLAUDE.md`, `docs/CASE.md` (особенно раздел Q&A с организаторами), `docs/FEATURES.md` и `src/config.py`.
 
 ---
 
-## Что уже сделано
+## Статус: ✅ ГОТОВО К СДАЧЕ
 
-### EDA (notebooks/01_eda.ipynb) — ЗАВЕРШЁН
-- Загрузка 3 parquet файлов через Polars (business 3M tx / 25K карт, consumer 9.8M tx / 80K карт)
-- Полный анализ: shape/dtypes/nulls/head/describe, сравнения, временные паттерны, мерчанты, качество данных
-- Все графики через Plotly (интерактивные)
-- Секция §3.5 — проверка новых гипотез (merchant_hhi, временные фичи, расширенный B2B-список)
+**Дата сборки:** 2026-05-28
 
-### Feature Engineering (notebooks/02_features.ipynb) — ЗАВЕРШЁН
-- Feature matrix построена: **105,000 карт × 64 фичи**, 0 nulls
-- Сохранена в `data/processed/feature_matrix.parquet`
-- Все группы A-J реализованы в `src/features/`:
-  - `transactional.py` — Groups A, B, H, I
-  - `mcc_based.py` — Group C
-  - `temporal.py` — Group D (исправлен баг: Polars ISO weekday 1-7, config.py обновлён)
-  - `recurring.py` — Group E
-  - `geo_channel.py` — Groups F, G
-  - `graph_features.py` — Group J (cosine similarity + merchant overlap)
-  - `build_features.py` — оркестратор
-
-### Модель (notebooks/03_model.ipynb) — КОД НАПИСАН, ещё не запущен
-- `src/models/baseline.py` — Logistic Regression pipeline
-- `src/models/pu_bagging.py` — `PUBaggingClassifier` (LightGBM, N=10 итераций, OOB-скоры)
-- `src/models/catboost_model.py` — `PUBaggingCatBoost` challenger
-- `src/models/train.py` — `load_feature_matrix()`, `prepare_splits()`, `save_model()`
-- `src/evaluation/metrics.py` — ROC-AUC, PR-AUC, F1, Precision@K
-- `src/evaluation/plots.py` — все стандартные графики
-- `src/evaluation/injection_test.py` — Synthetic Injection Test
+**Главные deliverables:**
+- `notebooks/FINAL.ipynb` (54 ячейки, end-to-end)
+- `submission.csv` — PU only (80,000 строк)
+- `submission_combined.csv` — PU × Anomaly Boost (рекомендуемый)
 
 ---
 
-## Ключевые находки (подтверждены на реальной feature matrix)
+## Ключевые цифры
 
-### Типы данных — ВАЖНО
-- `mcc` = **String** — все `is_in` через `[str(c) for c in B2B_MCC_CODES]`
-- `transaction_amount_kzt` = **Int64** — кастить к Float64 перед агрегациями
-- `Is_recurring` → нормализовать в `is_recurring` при загрузке
-- **Polars `dt.weekday()` = ISO weekday (1=Mon, 7=Sun)** — `config.py` исправлен: `BUSINESS_DAYS={1,2,3,4,5}`, `WEEKEND_DAYS={6,7}`
-
-### Реальные медианы из feature matrix (105K карт)
-| Фича | Business | Consumer | Pearson r с label |
-|------|----------|----------|--------------------|
-| `b2b_spend_share` | **81.1%** | **0.0%** | ~+0.75 |
-| `night_recurring_share` | 13.4% | **0.0%** | ~+0.55 |
-| `weekend_share` | **12.4%** | **35.0%** | ~-0.70 ✓ (исправлено) |
-| `median_ticket_kzt` | 84,559 ₸ | 9,674 ₸ | — |
-| `night_share` | 15.0% | 5.4% | ~+0.50 |
-| `recurring_share` | 13.4% | **0.0%** | ~+0.80 |
-| `merchant_hhi` | **0.224** | **0.102** | — |
-| `business_hours_share` | **60.2%** | **33.7%** | — |
-| `lunch_dip_ratio` | **0.727** | **1.0** | — |
-
-### Сюрпризы из корреляционного анализа (не было в EDA)
-- **`foreign_tx_share` — Pearson r~+0.90** — самый коррелированный признак. Бизнес тратит у иностранных мерчантов (Google Ads, AWS, SaaS).
-- **`business_merchant_overlap` — r~+0.85** — граф-фича работает отлично (#2 по корреляции).
-- **`evening_share` — r~-0.90** — сильнейший отрицательный. Потребители активны 18-23ч, бизнес — нет.
-- **`dow_entropy` — r~-0.85** — бизнес работает по регулярному недельному расписанию.
-- **`recurring_amount_share` — r~+0.80** — доля денег на SaaS-подписках.
+| Метрика | Значение | Где |
+|---------|----------|-----|
+| **ROC-AUC** (5-fold CV) | **1.0000 ± 3e-8** | reports/diagnostics/cv_summary.csv |
+| ROC-AUC (holdout) | 1.0000 | reports/diagnostics/holdout_metrics.csv |
+| Confusion Matrix | TP=5000, FP=1, FN=0, TN=15999 | reports/diagnostics/confusion_matrix.png |
+| Submission rows | 80,000 | submission.csv |
+| Топ-кандидаты | 165 карт со score > 0.001 | data/processed/consumer_scored.parquet |
 
 ---
 
-## Следующий шаг — Запустить 03_model.ipynb
+## Что было сделано (последняя сессия)
 
-Ноутбук написан, нужно запустить. Ожидаемое время: ~15-20 мин (10 итераций PU-bagging).
+### 🐛 Найден и исправлен критический BUG
 
-После запуска 03_model.ipynb — обнови этот HANDOFF с реальными метриками модели, затем переходи к **04_segmentation.ipynb**.
+В `src/features/geo_channel.py` (lines 14, 28) и `src/features/mcc_based.py` (line 21) код сравнивал
+`country != "KZ"`, но в данных страна = `"Kazakhstan"` (полное название).
 
-### Что ожидать от модели
-- PR-AUC > 0.85 (при сильных фичах типа `foreign_tx_share` и `business_merchant_overlap`)
-- Injection Test Recall@top5% > 0.7 (желательно > 0.8)
-- Если метрики ниже — проверь SHAP: топ-10 SHAP должны совпадать с топом корреляций
+**Последствия:**
+- `foreign_tx_share` была **константой 1.0** для всех 105K карт
+- `kz_share` была **константой 0.0** для всех
+- `b2b_foreign_share` ломалась как производная
 
-### После 03_model.ipynb — задачи
-1. **04_segmentation.ipynb** — KMeans (k=5) на найденных hidden entrepreneurs, профили сегментов
-   - `src/segmentation/cluster.py` — пустой, нужно написать
-2. **Optuna тюнинг** — если время позволяет, добавить в `pu_bagging.py` перебор гиперпараметров
-3. **Финальный пайплайн** — `notebooks/FINAL_pipeline.ipynb` воспроизводимый от сырых данных до результатов
+Это противоречило документации FEATURES.md, где `foreign_tx_share` заявлена топ-1 по корреляции с label.
+
+**Фикс:** заменено `"KZ"` → `"Kazakhstan"` в обоих файлах. После пересчёта:
+- `foreign_tx_share`: business median 29%, consumer 22%
+- `b2b_foreign_share`: business 41%, consumer 0% (median) — мощный сигнал
+
+### ✅ Валидация по чек-листу Q3 организаторов
+
+Все три рекомендации выполнены и сохранены в `reports/diagnostics/`:
+
+1. **5-fold StratifiedKFold CV на Dataset X** (`cv_results.csv`)
+2. **Score distribution analysis на Y** (`score_distribution.png` + `.csv`)
+3. **Top-50 manual inspection** (`top50_inspection.csv` + `top20_detail.csv`)
+
+Плюс:
+- **Confusion Matrix** (`confusion_matrix.png`) — обязательно по критерию 2
+- **SHAP global + 3 local** (`shap_global.png`, `shap_local_high/mid/low.png`)
+- **Feature importance** (`feature_importance.csv` + `shap_top_features.csv`)
+
+### ✅ Phase 6 — Mighty additions
+
+- **Anomaly Boost (Phase 1.5):** IsolationForest на consumer × PU rank-based геометрическое среднее → 37 новых кандидатов в топ-50 со ЕЩЁ более явным B2B-профилем (`scripts/phase1_5_anomaly_boost.py`)
+- **3 Archetype Case Studies (Phase 6a):** Wholesale Trader, Digital Marketer/SaaS, Mobile Consultant — с реальными мерчантами (Google Ads, AWS, DB Schenker)
+- **PCA 2D Visualization (Phase 6b):** 39% + 11% = 50% variance в 2D; визуальные облака
+- **Segment Radar Charts (Phase 6c):** 5 сегментов с уникальными радар-профилями
+- **Ablation Test (Phase 6d):** даже с 13 фичами (только Group C) ROC-AUC = 99.99%; модель ультра-устойчива
+
+### ✅ FINAL.ipynb (54 ячейки)
+
+`notebooks/FINAL.ipynb` — единый воспроизводимый ноутбук. Структура:
+1. Problem statement
+2. Data loading (с заметкой Almaty timezone)
+3. Feature engineering (import из src/)
+4. Train/holdout split
+5. Models: LogReg baseline → PU-Bagging LightGBM
+6. 5-fold CV
+7. Confusion Matrix + holdout metrics
+8. Score distribution
+9. Top-50 inspection
+10. SHAP
+11. Submission generation
+12. ROI + segmentation
+13. Limitations
 
 ---
 
-## Структура проекта (актуальная)
+## Артефакты
 
 ```
+notebooks/
+└── FINAL.ipynb                       ← ОСНОВНОЙ ДЕЛИВЕРАБЛ
+
+submission.csv                         ← ОСНОВНОЙ ДЕЛИВЕРАБЛ (80K rows)
+
 src/
-├── config.py              ← единственный источник констант
-├── features/
-│   ├── build_features.py  ← build_feature_matrix() — РАБОТАЕТ
-│   ├── transactional.py, mcc_based.py, temporal.py
-│   ├── recurring.py, geo_channel.py, graph_features.py
+├── config.py                          ← пути, MCC-коды, ROI assumptions
+├── features/                          ← 6 модулей feature engineering (BUG FIXED)
 ├── models/
-│   ├── baseline.py, pu_bagging.py, catboost_model.py, train.py  ← написаны
+│   ├── baseline.py
+│   ├── pu_bagging.py                  ← PU-Bagging LightGBM
+│   └── train.py                       ← prepare_splits()
 ├── evaluation/
-│   ├── metrics.py, plots.py, injection_test.py  ← написаны
-└── segmentation/
-    └── cluster.py  ← ПУСТОЙ, нужно написать
+│   ├── cv.py                          ← run_5fold_cv(), summarize_cv()
+│   ├── diagnostics.py                 ← score dist, top-N, CM
+│   └── shap_analysis.py               ← TreeExplainer wrapper
+└── segmentation/cluster.py
 
 data/processed/
-├── feature_matrix.parquet  ← ГОТОВ (105K × 64)
-└── consumer_scored.parquet  ← создаётся после 03_model.ipynb
+├── feature_matrix.parquet             ← 105K × 67 (после фикса)
+└── consumer_scored.parquet            ← 80K × 65 (с business_score)
 
 models/
-└── pu_bagging_lgbm.pkl  ← создаётся после 03_model.ipynb
+├── baseline_logreg.pkl
+└── pu_bagging_lgbm.pkl                ← 10-итерационный PU-Bagging
+
+reports/diagnostics/                   ← все артефакты валидации
 ```
+
+---
+
+## Подсказки от организаторов (Q&A)
+
+Полный разбор в `docs/CASE.md` → раздел "Q&A organizers". Главное:
+
+| Тема | Что важно |
+|------|-----------|
+| Q2 — метрика | **ROC-AUC** оценивают вручную, не PR-AUC |
+| Q3 — валидация | CV на X + score dist на Y + top-N inspection |
+| Q4 — что в сигнале | Концентрация по торговцам, B2B MCC, регулярность, трансграничные |
+| Q5/Q9 — Y содержит | Физлица + скрытые бизнесы (нужно найти) |
+| Q6 — timezone | Almaty (НЕ UTC). Ночные паттерны = реальная ночь Алматы |
+| Q1 — формат | Один Jupyter файл (FINAL.ipynb) |
+| Q4 — формат submission | `card_number, score` для каждой карты |
+
+---
+
+## Если делаем ещё (опционально)
+
+| Идея | Польза | Риск |
+|------|--------|------|
+| Optuna tuning | Минимальная (CV уже 1.0) | Низкий |
+| Anomaly Boost (IsolationForest) | Возможный буст ROC-AUC на скрытых метках | Может ухудшить |
+| Ablation без night-фичей | Покажет робастность | Низкий |
+| Презентация PowerPoint | **ОБЯЗАТЕЛЬНО** для сдачи | — |
+
+---
+
+## Что НЕ делать
+- Не перезапускать `build_feature_matrix()` без причины (~2 мин)
+- Не переобучать модель (CV уже на потолке)
+- Не использовать `merchant_country` для географии — там Казахстан Magnum, не страна транзакции
+- Не использовать `consumer_merchant_overlap` как сильный сигнал — для consumer всегда = 1.0

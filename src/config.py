@@ -65,6 +65,8 @@ B2B_MCC_CODES = {
     8931,  # Accounting / auditing / bookkeeping
     7379,  # Computer services / repair
     5046,  # Commercial equipment NEC
+    # Добавлено по подсказке из чата хакатона (2 человека просили добавить в reference):
+    5099,  # Durable goods wholesale NEC (оптовые закупки товаров длит. пользования)
 }
 
 # Consumer MCC — потребительский сигнал
@@ -76,10 +78,19 @@ CONSUMER_MCC_CODES = {
     5411,  # Grocery stores / Supermarkets
     5311,  # Department stores
     5912,  # Drug stores / Pharmacy
-    7011,  # Hotels
+    # 7011 (Hotels) перенесён в RENTAL_MCC_CODES
     4111,  # Local transit
     5942,  # Book stores
     7922,  # Ticketing
+}
+
+# Rental / Hospitality MCC — индикатор арендного бизнеса (Airbnb-хосты, hostels)
+# Hypothesis: consumer card с высокой долей таких трат = скрытый арендодатель.
+RENTAL_MCC_CODES = {
+    7011,  # Hotels / Motels (был в CONSUMER, но эти траты на консьюмер-картах часто
+           # принадлежат тем, кто сам сдаёт жильё и анализирует конкурентов / закупает услуги)
+    7012,  # Timeshares / Short-term apartment rentals (отсутствует в merchants_reference,
+           # но 43K транзакций у consumer — сигнал скрытого Airbnb-бизнеса)
 }
 
 # Mixed MCC — могут быть и личные и бизнес
@@ -107,9 +118,11 @@ BUSINESS_DAYS = {1, 2, 3, 4, 5}  # Пн-Пт (Polars dt.weekday(): 1=Mon, 7=Sun)
 WEEKEND_DAYS = {6, 7}             # Сб-Вс
 
 # ─── Порог скоринга (threshold) ───────────────────────────────────────────────
-# Управляется слайдером в дашборде. Здесь — дефолт для ноутбука.
+# Для submission threshold НЕ нужен — отдаём ranking всех 80K карт.
+# Этот дефолт используется только для метрик типа F1/Precision/Recall на holdout
+# (sklearn требует бинарный prediction для confusion matrix).
 
-DEFAULT_THRESHOLD = 0.7
+DEFAULT_THRESHOLD = 0.5
 
 # ─── Segmentation ─────────────────────────────────────────────────────────────
 
